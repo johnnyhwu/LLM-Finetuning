@@ -263,109 +263,105 @@ if INFERENCE_MODE:
     tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME, cache_dir=f"{CACHE_DIR}/tokenizer")
     model.config.use_cache = True
 
-    for ckpt_id in ["1841", "3683", "5524", "7366", "9207", "11049", "12890", "14732", "16573", "18410"]:
+    # then, we load adapter weight
+    adapters_weights = load_file(f"ckpt/flan-t5-xxl-sharded-fp16-samsum/checkpoint-18410/adapter_model.safetensors")
 
-        print(f"ckpt_id: {ckpt_id}")
+    # finally, we set original model with new weight
+    set_peft_model_state_dict(model, adapters_weights)
 
-        # then, we load adapter weight
-        adapters_weights = load_file(f"ckpt/flan-t5-xxl-sharded-fp16-samsum/checkpoint-{ckpt_id}/adapter_model.safetensors")
+    # we set model to inference mode, "do not" move model to cuda (.cuda()), it will done automatically
+    model.eval()
 
-        # finally, we set original model with new weight
-        set_peft_model_state_dict(model, adapters_weights)
-
-        # we set model to inference mode, "do not" move model to cuda (.cuda()), it will done automatically
-        model.eval()
-
-        # remember that we have a dataset (DatasetDict) loaded from huggingface
-        print(dataset)
-        """
-        DatasetDict({
-            train: Dataset({
-                features: ['id', 'dialogue', 'summary'],
-                num_rows: 14732
-            })
-            test: Dataset({
-                features: ['id', 'dialogue', 'summary'],
-                num_rows: 819
-            })
-            validation: Dataset({
-                features: ['id', 'dialogue', 'summary'],
-                num_rows: 818
-            })
+    # remember that we have a dataset (DatasetDict) loaded from huggingface
+    print(dataset)
+    """
+    DatasetDict({
+        train: Dataset({
+            features: ['id', 'dialogue', 'summary'],
+            num_rows: 14732
         })
-        """
+        test: Dataset({
+            features: ['id', 'dialogue', 'summary'],
+            num_rows: 819
+        })
+        validation: Dataset({
+            features: ['id', 'dialogue', 'summary'],
+            num_rows: 818
+        })
+    })
+    """
 
-        # we randomly choose a testing sample
-        sample = dataset["test"][42]
-        print(sample)
-        """
-        {
-            'id': '13829773',
-            'dialogue': 
-                "Ola: Hello Kate, sorry for not keeping in touch properly. As expected, we have hardly any connectivity here in Cuba. But we're doing fine and enjoying our trip. How are the things at home?\r\n
-                Kate: At long last! Started to worry. Nothing new happening, if you disregard all that Xmas craze. Momo has recovered from her injury and frolicking again.\r\n
-                Kate: <file_photo>\r\n
-                Kate: Good old Momo! Yes, it is your scarf!\r\n
-                Ola: NO!!! It's one of my favorites! The one from Laos!\r\n
-                Kate: Too late. Momo thinks it belongs to her now. Get yourself a new one. They surely have nice ones there.\r\n
-                Ola: Not at all. Only cheapish cotton blouses with horrible multi-coloured embroidery or some equally horrible crochetted tops. No shawls or scarfs.\r\n
-                Ola: <file_photo>\r\n
-                Kate: Wait a sec!\r\n
-                Kate: <file_photo>\r\n
-                Kate: Isn't it similar?! Mum would probably like it. Why don't you?\r\n
-                Ola: Not a bad idea. But the quality is usually crappy.\r\n
-                Kate: And if you go to some boutique shop or something? Not at a market as in your pics?\r\n
-                Ola: I might try and find some. Would you like one too?\r\n
-                Kate: Not really. And Mum would prefer to be the only one with an authentic Cuban blouse :))\r\n
-                Ola: OK I'll have a look. Greets to everyone at home pls.\r\n
-                Kate: Take care!",
-            'summary': "Ola is in Cuba and is enjoying her trip. She has problems with connectivity there. Momo has recovered from her injury. Ola doesn't like the clothes in Cuba. Ola will try to find a blouse for mum in Cuba, as Kate suggested."
-        }
-        """
+    # we randomly choose a testing sample
+    sample = dataset["test"][42]
+    print(sample)
+    """
+    {
+        'id': '13829773',
+        'dialogue': 
+            "Ola: Hello Kate, sorry for not keeping in touch properly. As expected, we have hardly any connectivity here in Cuba. But we're doing fine and enjoying our trip. How are the things at home?\r\n
+            Kate: At long last! Started to worry. Nothing new happening, if you disregard all that Xmas craze. Momo has recovered from her injury and frolicking again.\r\n
+            Kate: <file_photo>\r\n
+            Kate: Good old Momo! Yes, it is your scarf!\r\n
+            Ola: NO!!! It's one of my favorites! The one from Laos!\r\n
+            Kate: Too late. Momo thinks it belongs to her now. Get yourself a new one. They surely have nice ones there.\r\n
+            Ola: Not at all. Only cheapish cotton blouses with horrible multi-coloured embroidery or some equally horrible crochetted tops. No shawls or scarfs.\r\n
+            Ola: <file_photo>\r\n
+            Kate: Wait a sec!\r\n
+            Kate: <file_photo>\r\n
+            Kate: Isn't it similar?! Mum would probably like it. Why don't you?\r\n
+            Ola: Not a bad idea. But the quality is usually crappy.\r\n
+            Kate: And if you go to some boutique shop or something? Not at a market as in your pics?\r\n
+            Ola: I might try and find some. Would you like one too?\r\n
+            Kate: Not really. And Mum would prefer to be the only one with an authentic Cuban blouse :))\r\n
+            Ola: OK I'll have a look. Greets to everyone at home pls.\r\n
+            Kate: Take care!",
+        'summary': "Ola is in Cuba and is enjoying her trip. She has problems with connectivity there. Momo has recovered from her injury. Ola doesn't like the clothes in Cuba. Ola will try to find a blouse for mum in Cuba, as Kate suggested."
+    }
+    """
 
-        # tokenize model's input (dialogue)
-        # because the "inputs" argument in model.generate() expects tensor type, we should specify "return_tensors" here, or we will get the "input_ids" in a list
+    # tokenize model's input (dialogue)
+    # because the "inputs" argument in model.generate() expects tensor type, we should specify "return_tensors" here, or we will get the "input_ids" in a list
+    input_ids = tokenizer(sample["dialogue"], truncation=True, return_tensors="pt")["input_ids"].cuda()
+
+    # model inference
+    outputs = model.generate(
+        inputs=input_ids,
+        max_new_tokens=128,
+        do_sample=False,
+        use_cache=True,
+    )
+    print(outputs)
+    """
+    tensor([[    0,  5424,     9,    19,    16, 13052,     5,  8822,    32,    65,
+            16599,    45,   160,  2871,     5,  5424,     9,    31,     7, 25816,
+                19,  2767,     5,  5424,     9,    56,   653,    12,   805,     3,
+                9,   126,    80,     5,     1]])
+    """
+    print(tokenizer.decode(outputs[0]))
+    """
+    <pad> Ola is in Cuba. Momo has recovered from her injury. Ola's scarf is gone. Ola will try to buy a new one.</s>
+    """
+
+
+    # now, we want to evaluate model on testing dataset with rouge metric
+    predictions, references = [], []
+    for i in tqdm(range(len(dataset["test"])), desc="Evaluation"):
+        sample = dataset["test"][i]
         input_ids = tokenizer(sample["dialogue"], truncation=True, return_tensors="pt")["input_ids"].cuda()
+        outputs = model.generate(inputs=input_ids, max_new_tokens=128, do_sample=False, use_cache=True)
+        prediction = tokenizer.decode(outputs[0].detach().cpu().numpy(), skip_special_tokens=True)
+        label = sample["summary"]
+        predictions.append(prediction)
+        references.append(label)
 
-        # model inference
-        outputs = model.generate(
-            inputs=input_ids,
-            max_new_tokens=128,
-            do_sample=False,
-            use_cache=True,
-        )
-        print(outputs)
-        """
-        tensor([[    0,  5424,     9,    19,    16, 13052,     5,  8822,    32,    65,
-                16599,    45,   160,  2871,     5,  5424,     9,    31,     7, 25816,
-                    19,  2767,     5,  5424,     9,    56,   653,    12,   805,     3,
-                    9,   126,    80,     5,     1]])
-        """
-        print(tokenizer.decode(outputs[0]))
-        """
-        <pad> Ola is in Cuba. Momo has recovered from her injury. Ola's scarf is gone. Ola will try to buy a new one.</s>
-        """
+    # load rouge metric
+    metric = evaluate.load("rouge")
 
+    # compute metric
+    rogue = metric.compute(predictions=predictions, references=references, use_stemmer=True)
 
-        # now, we want to evaluate model on testing dataset with rouge metric
-        predictions, references = [], []
-        for i in tqdm(range(len(dataset["test"])), desc="Evaluation"):
-            sample = dataset["test"][i]
-            input_ids = tokenizer(sample["dialogue"], truncation=True, return_tensors="pt")["input_ids"].cuda()
-            outputs = model.generate(inputs=input_ids, max_new_tokens=128, do_sample=False, use_cache=True)
-            prediction = tokenizer.decode(outputs[0].detach().cpu().numpy(), skip_special_tokens=True)
-            label = sample["summary"]
-            predictions.append(prediction)
-            references.append(label)
-
-        # load rouge metric
-        metric = evaluate.load("rouge")
-
-        # compute metric
-        rogue = metric.compute(predictions=predictions, references=references, use_stemmer=True)
-
-        # print results
-        print(f"rogue1: {rogue['rouge1']* 100:.2f}%")
-        print(f"rouge2: {rogue['rouge2']* 100:.2f}%")
-        print(f"rougeL: {rogue['rougeL']* 100:.2f}%")
-        print(f"rougeLsum: {rogue['rougeLsum']* 100:.2f}%")
+    # print results
+    print(f"rogue1: {rogue['rouge1']* 100:.2f}%")
+    print(f"rouge2: {rogue['rouge2']* 100:.2f}%")
+    print(f"rougeL: {rogue['rougeL']* 100:.2f}%")
+    print(f"rougeLsum: {rogue['rougeLsum']* 100:.2f}%")

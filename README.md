@@ -1,4 +1,4 @@
-# LoRA-Finetuning Examples
+# LLM-Finetuning Examples
 
 ## Flan-T5 on Samsung/samsum
 
