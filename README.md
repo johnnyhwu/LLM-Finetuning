@@ -74,7 +74,7 @@ lora_config = LoraConfig(
 ```
 resulting in a higher number of fine-tuning parameters in the larger model, and potentially leading to overfitting. Moreover, the larger model also quantizes the original pre-trained weights to INT8 during both training and inference, which could also contribute to its inferior performance.
 
-### Problem encountered during development
+### Pitfall during Development
 
 1. Why doesn't the HuggingFace Dataset need to be remapped after it has been mapped once?
     
@@ -138,3 +138,29 @@ resulting in a higher number of fine-tuning parameters in the larger model, and 
     model.cuda()
     ```
     Especially for models quantized with BitsAndBytes, manually moving them to a CUDA device during inference can lead to extremely slow inference speeds and completely incorrect results. However, the exact cause of this issue is unclear.
+
+5. `libcusparse.so.11` not Found:
+
+    When quantizing a model with BitsAndBytes (as mentioned in the three steps in point two), you may encounter an error stating that `libcusparse.so.11` cannot be found. In this case, you need to install `nvidia-pyindex` and `nvidia-cusparse` using `pip`:
+    ```
+    pip install nvidia-pyindex
+    pip install nvidia-cusparse
+    ```
+    After installation, you can find the `libcusparse.so.11` file in your current Conda environment. For example, I found it in the `env` directory under my own Conda environment folder:
+    ```
+    /path_to_env/lib/python3.10/site-packages/nvidia/cusparse/lib/libcusparse.so.11
+    ```
+    Finally, you just need to export this path:
+    ```
+    export LD_LIBRARY_PATH="/path_to_env/lib/python3.10/site-packages/nvidia/cusparse/lib/libcusparse.so.11"
+    ```
+
+6. Remember to specify `max_new_tokens` in `model.generate()`:
+
+   During evaluation, we often perform inference on the model, frequently calling `model.generate()`. According to the [HuggingFace GenerationConfig](https://huggingface.co/docs/transformers/v4.41.3/en/main_classes/text_generation#transformers.GenerationConfig) documentation, if the `max_new_tokens` argument is not specified, it defaults to using `max_length=20`. This condition can cause the model's output to be influenced by the length of the input prompt, preventing an accurate evaluation of the model's performance. Therefore, when using `model.generate()`, remember to specify `max_new_tokens`!
+
+
+## Create GPT2 from Scratch
+
+Script: `gpt2_from_scratch.py`
+
